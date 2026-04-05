@@ -11,9 +11,13 @@ provider:
     PROCESSING_TIME_MS: '3000'
     LAMBDA_TIMEOUT: '30'
     MAX_RETRIES: '2'
+  apiGateway:
+    throttle:
+      rateLimit: 1000
+      burstLimit: 2000
   iam:
     role:
-      statements: [] # буде заповнено пізніше
+      statements: [] # will be populated in Step 15
 
 plugins:
   - serverless-offline
@@ -26,9 +30,93 @@ functions:
       - http:
           path: tasks
           method: post
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId: !Ref CognitoAuthorizer
       - http:
           path: tasks/status/{taskId}
           method: get
+          authorizer:
+            type: COGNITO_USER_POOLS
+            authorizerId: !Ref CognitoAuthorizer
 
 resources:
-  Resources: {} # будуть додані в наступних кроках
+  Resources:
+    # ── DynamoDB ──────────────────────────────────────────────────────────────
+    TasksTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: ${self:provider.environment.TASKS_TABLE}
+        BillingMode: PAY_PER_REQUEST
+        AttributeDefinitions:
+          - AttributeName: taskId
+            AttributeType: S
+          - AttributeName: status
+            AttributeType: S
+        KeySchema:
+          - AttributeName: taskId
+            KeyType: HASH
+        GlobalSecondaryIndexes:
+          - IndexName: status-index
+            KeySchema:
+              - AttributeName: status
+                KeyType: HASH
+            Projection:
+              ProjectionType: ALL
+        StreamSpecification:
+          StreamViewType: NEW_IMAGE
+
+    # ── SQS ───────────────────────────────────────────────────────────────────
+    EmergencyDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-emergency-dlq-${sls:stage}
+
+    TaskDLQ:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-task-dlq-${sls:stage}
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt EmergencyDLQ.Arn
+          maxReceiveCount: 3
+
+    TaskQueue:
+      Type: AWS::SQS::Queue
+      Properties:
+        QueueName: ${self:service}-task-queue-${sls:stage}
+        VisibilityTimeout: 180 # lambdaTimeout * 6 = 30 * 6
+        RedrivePolicy:
+          deadLetterTargetArn: !GetAtt TaskDLQ.Arn
+          maxReceiveCount: 3
+
+    # ── Cognito ───────────────────────────────────────────────────────────────
+    CognitoUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        UserPoolName: ${self:service}-user-pool-${sls:stage}
+
+    CognitoUserPoolClient:
+      Type: AWS::Cognito::UserPoolClient
+      Properties:
+        ClientName: ${self:service}-client
+        UserPoolId: !Ref CognitoUserPool
+        ExplicitAuthFlows:
+          - ALLOW_USER_PASSWORD_AUTH
+          - ALLOW_REFRESH_TOKEN_AUTH
+
+    TaskUsersGroup:
+      Type: AWS::Cognito::UserPoolGroup
+      Properties:
+        GroupName: task-users
+        UserPoolId: !Ref CognitoUserPool
+
+    # ── API Gateway Authorizer ────────────────────────────────────────────────
+    CognitoAuthorizer:
+      Type: AWS::ApiGateway::Authorizer
+      Properties:
+        Name: CognitoAuthorizer
+        Type: COGNITO_USER_POOLS
+        ProviderARNs:
+          - !GetAtt CognitoUserPool.Arn
+        RestApiId: !Ref ApiGatewayRestApi
+        IdentitySource: method.request.header.Authorization
