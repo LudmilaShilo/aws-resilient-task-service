@@ -1,0 +1,34 @@
+service: aws-resilient-task-service
+
+provider:
+  name: aws
+  runtime: nodejs20.x
+  region: eu-central-1
+  stage: dev
+  environment:
+    TASKS_TABLE: tasks
+    TASK_QUEUE_URL: !Ref TaskQueue
+    PROCESSING_TIME_MS: '3000'
+    LAMBDA_TIMEOUT: '30'
+    MAX_RETRIES: '2'
+  iam:
+    role:
+      statements: [] # буде заповнено пізніше
+
+plugins:
+  - serverless-offline
+
+functions:
+  api:
+    handler: dist/lambda.handler
+    timeout: 30
+    events:
+      - http:
+          path: tasks
+          method: post
+      - http:
+          path: tasks/status/{taskId}
+          method: get
+
+resources:
+  Resources: {} # будуть додані в наступних кроках
