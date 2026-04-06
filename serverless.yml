@@ -11,6 +11,8 @@ provider:
     PROCESSING_TIME_MS: '3000'
     LAMBDA_TIMEOUT: '30'
     MAX_RETRIES: '2'
+    HMAC_SECRET: ${ssm:/aws-resilient-task-service/hmac-secret}
+    LOG_LEVEL: info
   apiGateway:
     throttle:
       rateLimit: 1000

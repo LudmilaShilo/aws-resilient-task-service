@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import {
   ForbiddenException,
   INestApplication,
+  NotFoundException,
   ValidationPipe,
 } from '@nestjs/common';
 import request from 'supertest';
@@ -10,12 +11,18 @@ import type { Request } from 'express';
 import { TasksModule } from '../tasks.module';
 import { TasksService } from '../tasks.service';
 import { JwtAuthGuard } from '../../auth/jwt-auth.guard';
-import { SQS_LIMITS } from '../../shared';
+import { SQS_LIMITS, TaskStatus } from '../../shared';
+import { TaskStatusResponse } from '../dto/task-status-response.dto';
 import type { Server } from 'http';
 
 const VALID_UUID = 'f47ac10b-58cc-4372-a567-0e02b2c3d479';
 const VALID_BODY = { taskId: VALID_UUID, payload: { key: 'value' } };
 const REQUIRED_GROUP = 'task-users';
+
+const TASK_STATUS_RESPONSE: TaskStatusResponse = {
+  taskId: VALID_UUID,
+  status: TaskStatus.PENDING,
+};
 
 type AuthedRequest = Request & { user: { sub: string } };
 
@@ -44,6 +51,7 @@ describe('TasksController (integration)', () => {
       .overrideProvider(TasksService)
       .useValue({
         createTask: jest.fn().mockResolvedValue({ taskId: VALID_UUID }),
+        getTaskStatus: jest.fn().mockResolvedValue(TASK_STATUS_RESPONSE),
       })
       .compile();
 
@@ -146,6 +154,71 @@ describe('TasksController (integration)', () => {
       await request(app.getHttpServer())
         .post('/tasks')
         .send(VALID_BODY)
+        .expect(403);
+    });
+  });
+
+  describe('GET /tasks/status/:taskId', () => {
+    it('returns 200 for a valid request', async () => {
+      withAuth();
+
+      await request(app.getHttpServer())
+        .get(`/tasks/status/${VALID_UUID}`)
+        .expect(200);
+    });
+
+    it('calls service with taskId and userId', async () => {
+      withAuth();
+
+      await request(app.getHttpServer()).get(`/tasks/status/${VALID_UUID}`);
+
+      expect(tasksService.getTaskStatus).toHaveBeenCalledWith(
+        VALID_UUID,
+        'user-sub-123',
+      );
+    });
+
+    it('returns 400 when taskId is not a valid UUID v4', async () => {
+      withAuth();
+
+      await request(app.getHttpServer())
+        .get('/tasks/status/not-a-uuid')
+        .expect(400);
+    });
+
+    it('returns 403 when Authorization header is missing', async () => {
+      await request(app.getHttpServer())
+        .get(`/tasks/status/${VALID_UUID}`)
+        .expect(403);
+    });
+
+    it('returns 403 when user is not in task-users group', async () => {
+      withAuth(['other-group']);
+
+      await request(app.getHttpServer())
+        .get(`/tasks/status/${VALID_UUID}`)
+        .expect(403);
+    });
+
+    it('returns 404 when service throws NotFoundException', async () => {
+      withAuth();
+      jest
+        .spyOn(tasksService, 'getTaskStatus')
+        .mockRejectedValue(new NotFoundException());
+
+      await request(app.getHttpServer())
+        .get(`/tasks/status/${VALID_UUID}`)
+        .expect(404);
+    });
+
+    it('returns 403 when service throws ForbiddenException', async () => {
+      withAuth();
+      jest
+        .spyOn(tasksService, 'getTaskStatus')
+        .mockRejectedValue(new ForbiddenException());
+
+      await request(app.getHttpServer())
+        .get(`/tasks/status/${VALID_UUID}`)
         .expect(403);
     });
   });

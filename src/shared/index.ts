@@ -6,3 +6,4 @@ export {
   ConditionalCheckFailedException,
 } from './db/tasks.repository';
 export { logger } from './logger/logger';
+export { createUserIdIndex } from './hmac';
