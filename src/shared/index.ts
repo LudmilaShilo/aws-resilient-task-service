@@ -1,4 +1,5 @@
 export * from './types';
+export * from './constants';
 export { docClient } from './db/dynamo.client';
 export {
   TasksRepository,
