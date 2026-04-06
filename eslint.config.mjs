@@ -34,4 +34,12 @@ export default tseslint.config(
       '@typescript-eslint/no-unsafe-call': 'off',
     },
   },
+  {
+    // Relax rules that conflict with Jest patterns (mocks, spies, matchers)
+    files: ['**/*.spec.ts'],
+    rules: {
+      '@typescript-eslint/unbound-method': 'off',
+      '@typescript-eslint/no-unsafe-argument': 'off',
+    },
+  },
 );

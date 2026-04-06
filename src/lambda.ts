@@ -25,7 +25,7 @@ export const handler = async (
 ): Promise<APIGatewayProxyResult> => {
   if (!cachedHandler) {
     const app = await NestFactory.create(AppModule);
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
     // Reject requests with body exceeding SQS message size limit before they reach controllers
     app.use(express.json({ limit: SQS_LIMITS.MAX_PAYLOAD_BYTES }));
     await app.init();
