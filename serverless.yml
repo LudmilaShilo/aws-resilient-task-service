@@ -42,6 +42,17 @@ functions:
             type: COGNITO_USER_POOLS
             authorizerId: !Ref CognitoAuthorizer
 
+  taskProcessor:
+    handler: dist/lambdas/task-processor.handler
+    timeout: 30
+    reservedConcurrency: 10 # Maximum Concurrency
+    events:
+      - sqs:
+          arn: !GetAtt TaskQueue.Arn
+          batchSize: 5
+          maximumBatchingWindow: 30 # High Throughput Optimization
+          functionResponseType: ReportBatchItemFailures
+
 resources:
   Resources:
     # ── DynamoDB ──────────────────────────────────────────────────────────────

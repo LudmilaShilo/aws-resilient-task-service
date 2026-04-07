@@ -59,7 +59,6 @@ export class TasksRepository {
           ':processing': TaskStatus.PROCESSING,
           ':now': new Date().toISOString(),
         },
-        ReturnValuesOnConditionCheckFailure: 'ALL_OLD',
       }),
     );
   }
