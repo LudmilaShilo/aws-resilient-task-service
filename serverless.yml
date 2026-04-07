@@ -19,7 +19,32 @@ provider:
       burstLimit: 2000
   iam:
     role:
-      statements: [] # will be populated in Step 15
+      statements:
+        - Effect: Allow
+          Action:
+            - dynamodb:PutItem
+            - dynamodb:GetItem
+            - dynamodb:UpdateItem
+            - dynamodb:Query
+          Resource:
+            - !GetAtt TasksTable.Arn
+            - !Sub '${TasksTable.Arn}/index/*'
+        - Effect: Allow
+          Action:
+            - dynamodb:GetRecords
+            - dynamodb:GetShardIterator
+            - dynamodb:DescribeStream
+            - dynamodb:ListStreams
+          Resource: !GetAtt TasksTable.StreamArn
+        - Effect: Allow
+          Action:
+            - sqs:SendMessage
+            - sqs:ReceiveMessage
+            - sqs:DeleteMessage
+            - sqs:GetQueueAttributes
+          Resource:
+            - !GetAtt TaskQueue.Arn
+            - !GetAtt TaskDLQ.Arn
 
 plugins:
   - serverless-offline
@@ -173,6 +198,43 @@ resources:
             Filters:
               - Pattern: '{"eventName": ["INSERT"]}'
         Target: !GetAtt TaskQueue.Arn
+
+    # ── CloudWatch Alarm ─────────────────────────────────────────────────────
+    EmergencyDLQAlarm:
+      Type: AWS::CloudWatch::Alarm
+      Properties:
+        AlarmName: ${self:service}-emergency-dlq-not-empty-${sls:stage}
+        AlarmDescription: 'CRITICAL: messages in Emergency DLQ — manual intervention required'
+        Namespace: AWS/SQS
+        MetricName: ApproximateNumberOfMessagesVisible
+        Dimensions:
+          - Name: QueueName
+            Value: !GetAtt EmergencyDLQ.QueueName
+        Statistic: Sum
+        Period: 60
+        EvaluationPeriods: 1
+        Threshold: 1
+        ComparisonOperator: GreaterThanOrEqualToThreshold
+        TreatMissingData: notBreaching
+
+    # ── CloudWatch Log Groups ─────────────────────────────────────────────────
+    ApiLogGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+        LogGroupName: /aws/lambda/${self:service}-api-${sls:stage}
+        RetentionInDays: 14
+
+    TaskProcessorLogGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+        LogGroupName: /aws/lambda/${self:service}-taskProcessor-${sls:stage}
+        RetentionInDays: 14
+
+    DlqProcessorLogGroup:
+      Type: AWS::Logs::LogGroup
+      Properties:
+        LogGroupName: /aws/lambda/${self:service}-dlqProcessor-${sls:stage}
+        RetentionInDays: 14
 
     # ── API Gateway Authorizer ────────────────────────────────────────────────
     CognitoAuthorizer:
