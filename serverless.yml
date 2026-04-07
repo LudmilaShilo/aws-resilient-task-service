@@ -53,6 +53,14 @@ functions:
           maximumBatchingWindow: 30 # High Throughput Optimization
           functionResponseType: ReportBatchItemFailures
 
+  dlqProcessor:
+    handler: dist/lambdas/dlq-processor.handler
+    timeout: 30
+    events:
+      - sqs:
+          arn: !GetAtt TaskDLQ.Arn
+          batchSize: 1
+
 resources:
   Resources:
     # ── DynamoDB ──────────────────────────────────────────────────────────────
